@@ -1,73 +1,61 @@
-//ws://nuclear.t.javascript.ninja
 const socket = new WebSocket("ws://nuclear.t.javascript.ninja");
 
 socket.onopen = function () {
-    setTitle("Deactivate Power Station");
+    setTitle("Deactivating power station");
 };
 
 socket.onclose = function () {
-    setTitle("DISCONNECTED");
+    // setTitle("DISCONNECTED");
 };
 
 socket.onmessage = function (payload) {
-    // console.log(payload.data);
     printMessage(payload.data);
 };
 
 
 const statesTried = [];
-const sameTrue = [];
-const historyLog = [];
-let same = false;
-let lastPulled;
 const nuclear = [null, null, null, null];
 let inversion = null;
-let checkedLever = 0;
+let leverKnow = 0;
 socket.addEventListener('message', (event) => {
-    // console.log('Event data');
-    let logObj = {};
 
     let eventData = JSON.parse(event.data);
     if (eventData.error) {
         console.error(eventData);
-        //console.log(statesTried);
         return;
     }
 
     console.log(`Response event ${JSON.stringify(eventData)}`);
 
-    logObj.stateId = eventData.stateId;
 
-    // Если pulled один из ры
+    // Toggle the lever state when pulled
     if ("pulled" in eventData) {
         if ( nuclear[eventData.pulled] !== null) {
             nuclear[eventData.pulled] = ! nuclear[eventData.pulled];
         }
     }
 
+
     if ("same" in eventData) {
-        logObj.same = eventData.same;
-        logObj.pulled = lastPulled;
-        logObj.lever1 = eventData.lever1;
-        logObj.lever2 = eventData.lever2;
-        historyLog.push(logObj);
 
         if (eventData.same) {
             console.info("Same true");
 
-            if (nuclear[checkedLever] !== null ) {
-                nuclear[eventData.lever1] = nuclear[checkedLever];
-                nuclear[eventData.lever2] = nuclear[checkedLever];
+            if (nuclear[leverKnow] !== null ) {
+                nuclear[eventData.lever2] = nuclear[leverKnow];
             } else {
+                //First time around, levers 0 and 1 become TRUE
                 nuclear[eventData.lever1] = true;
                 nuclear[eventData.lever2] = true;
             }
 
-            same = true;
         } else {
-            same = false;
 
+            if (nuclear[leverKnow] !== null ) {
+                nuclear[eventData.lever2] = ! nuclear[leverKnow];
+            }
         }
+
     } else {
         console.time(`Pulling new state for ID -- ${eventData.stateId}`);
 
@@ -75,20 +63,22 @@ socket.addEventListener('message', (event) => {
 
     if(eventData.token) {
         setTitle("Station deactivated");
+        console.warn("Station deactivated");
         console.log(eventData.token);
         socket.close();
     }
 
     if (eventData.newState == "poweredOn") {
+        console.warn("Woops, but this time I'll get ya!");
         inversion = nuclear[0];
     }
 
 
-    if (nuclear[0] !== null ) {
+    // Poweroff Action Watcher
+    if (nuclear[3] !== null ) {
         let resultFlag = true;
         let firstValue = nuclear[0];
-        for (let i = 0; i < nuclear.length; i++) {
-
+        for (let i = 1; i < nuclear.length; i++) {
             if (nuclear[i] !== firstValue) {
                 resultFlag = false;
                 break;
@@ -96,16 +86,13 @@ socket.addEventListener('message', (event) => {
         }
 
         if ( (resultFlag && inversion === null) || (resultFlag && firstValue !== inversion) ) {
-            let powerOffAction = {
-                action: "powerOff",
-                stateId: "some-state-id"
-            };
 
-            powerOffAction.stateId = eventData.stateId;
+            if ( ! eventData.token ) {
+                let powerOffAction = {
+                    action: "powerOff",
+                    stateId: eventData.stateId
+                };
 
-            if (! eventData.token ) {
-                console.warn("Station deactivated");
-                console.warn(eventData.stateId);
                 socket.send(JSON.stringify(powerOffAction));
 
             }
@@ -113,48 +100,16 @@ socket.addEventListener('message', (event) => {
     }
 
 
-
-
-//nuclear.find((i) => {
-//    return i === ture;
-//});
-    let leverKnow = false;
-    for (let i = 0; i < nuclear.length; i++){
-        if (nuclear[i] === true) {
-            leverKnow = i;
-            break;
-        }
-    }
-
-    if (leverKnow === false) {
-        leverKnow = 0;
-    }
-    //shifting lever being checked?
-    checkedLever = leverKnow;
-
-    let leverCheck = false;
-    for (let i = 0; i < nuclear.length; i++){
-        if (nuclear[i] === null && leverKnow != i ) {
+    //Get an index of the lever to be checked
+    let leverCheck = leverKnow;
+    for (let i = 1; i < nuclear.length; i++){
+        if (nuclear[i] === null ) {
             leverCheck = i;
             break;
         }
     }
 
-    if (leverCheck === false) {
-        for (let i = 0; i < nuclear.length; i++){
-            if (nuclear[i] !== true && leverKnow != i ) {
-                leverCheck = i;
-                break;
-            }
-        }
 
-        if (leverCheck === false ) {
-            leverCheck = leverKnow;
-        }
-    }
-
-
-// console.log(statesTried.includes(eventData.stateId));
     const action = {
         action: "check",
         "lever1": leverKnow,
@@ -163,18 +118,13 @@ socket.addEventListener('message', (event) => {
     };
 
 
-
     if (eventData.pulled && ! eventData.token) {
-
-        lastPulled = eventData.pulled;
-
         console.info("Action");
         console.log(action);
 
         socket.send(JSON.stringify(action));
 
         statesTried.push(eventData.stateId);
-
     }
 
     console.log(`Got through ${statesTried.length} events`);
@@ -184,11 +134,7 @@ socket.addEventListener('message', (event) => {
 })
 
 
-document.forms[0].onsubmit = function () {
-    var input = document.getElementById('message');
-    socket.send(input.value);
-    input.value = '';
-};
+
 
 function setTitle(title) {
     document.querySelector('h1').innerHTML = title;
